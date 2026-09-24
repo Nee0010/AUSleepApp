@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Sleep Greenhouse",
+    "slug": "sleep-greenhouse",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "sleepgreenhouse",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "edu.auburn.sleepgreenhouse"
+    },
+    "android": {
+      "package": "edu.auburn.sleepgreenhouse"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
+}
