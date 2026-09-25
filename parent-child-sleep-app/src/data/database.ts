@@ -11,7 +11,7 @@ import type {
 import { createPasswordSalt, hashLocalPassword, normalizeUsername } from '../services/authService';
 
 export const DATABASE_NAME = 'sleep-greenhouse.db';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const SESSION_KEY = 'active_account_id';
 
 export const initialGreenhouse: GreenhouseState = {
@@ -28,8 +28,10 @@ type SetupRow = {
   family_id: string;
   parent_id: string;
   parent_name: string;
+  parent_age: number | null;
   child_id: string;
   child_name: string;
+  child_age: number | null;
   greenhouse_id: string;
   current_plant_type: PlantType;
   growth_percent: number;
@@ -44,15 +46,12 @@ type AccountCredentialRow = {
   password_hash: string;
 };
 
-type CompletedPlantRow = {
-  id: string;
-  plant_type: PlantType;
-  completed_at: string;
-};
-
+type CompletedPlantRow = { id: string; plant_type: PlantType; completed_at: string };
 type SleepRecordRow = {
   id: string;
   recorded_at: string;
+  parent_sleep_hours: number | null;
+  child_sleep_hours: number | null;
   parent_score: number;
   child_score: number;
   sunlight: number;
@@ -62,7 +61,6 @@ type SleepRecordRow = {
 
 export async function initializeDatabase(db: SQLiteDatabase) {
   await db.execAsync('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
-
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = result?.user_version ?? 0;
   if (currentVersion >= DATABASE_VERSION) return;
@@ -76,23 +74,21 @@ export async function initializeDatabase(db: SQLiteDatabase) {
         password_hash TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
-
       CREATE TABLE IF NOT EXISTS families (
         id TEXT PRIMARY KEY NOT NULL,
         account_id TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
-
       CREATE TABLE IF NOT EXISTS family_members (
         id TEXT PRIMARY KEY NOT NULL,
         family_id TEXT NOT NULL,
         role TEXT NOT NULL CHECK (role IN ('parent', 'child')),
         display_name TEXT NOT NULL,
+        age_years INTEGER,
         created_at TEXT NOT NULL,
         FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
       );
-
       CREATE TABLE IF NOT EXISTS greenhouses (
         id TEXT PRIMARY KEY NOT NULL,
         child_member_id TEXT NOT NULL UNIQUE,
@@ -104,7 +100,6 @@ export async function initializeDatabase(db: SQLiteDatabase) {
         updated_at TEXT NOT NULL,
         FOREIGN KEY (child_member_id) REFERENCES family_members(id) ON DELETE CASCADE
       );
-
       CREATE TABLE IF NOT EXISTS completed_plants (
         id TEXT PRIMARY KEY NOT NULL,
         greenhouse_id TEXT NOT NULL,
@@ -112,13 +107,14 @@ export async function initializeDatabase(db: SQLiteDatabase) {
         completed_at TEXT NOT NULL,
         FOREIGN KEY (greenhouse_id) REFERENCES greenhouses(id) ON DELETE CASCADE
       );
-
       CREATE TABLE IF NOT EXISTS sleep_records (
         id TEXT PRIMARY KEY NOT NULL,
         parent_member_id TEXT NOT NULL,
         child_member_id TEXT NOT NULL,
         greenhouse_id TEXT NOT NULL,
         recorded_at TEXT NOT NULL,
+        parent_sleep_hours REAL,
+        child_sleep_hours REAL,
         parent_score REAL NOT NULL,
         child_score REAL NOT NULL,
         sunlight REAL NOT NULL,
@@ -128,7 +124,6 @@ export async function initializeDatabase(db: SQLiteDatabase) {
         FOREIGN KEY (child_member_id) REFERENCES family_members(id) ON DELETE CASCADE,
         FOREIGN KEY (greenhouse_id) REFERENCES greenhouses(id) ON DELETE CASCADE
       );
-
       CREATE TABLE IF NOT EXISTS research_consents (
         id TEXT PRIMARY KEY NOT NULL,
         family_id TEXT NOT NULL,
@@ -137,16 +132,28 @@ export async function initializeDatabase(db: SQLiteDatabase) {
         recorded_at TEXT NOT NULL,
         FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
       );
-
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
       );
-
       CREATE INDEX IF NOT EXISTS idx_family_members_family ON family_members(family_id);
       CREATE INDEX IF NOT EXISTS idx_completed_plants_greenhouse ON completed_plants(greenhouse_id, completed_at DESC);
       CREATE INDEX IF NOT EXISTS idx_sleep_records_greenhouse ON sleep_records(greenhouse_id, recorded_at DESC);
     `);
+  }
+
+  if (currentVersion < 2) {
+    const memberColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(family_members)');
+    if (!memberColumns.some((column) => column.name === 'age_years')) {
+      await db.execAsync('ALTER TABLE family_members ADD COLUMN age_years INTEGER;');
+    }
+    const sleepColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sleep_records)');
+    if (!sleepColumns.some((column) => column.name === 'parent_sleep_hours')) {
+      await db.execAsync('ALTER TABLE sleep_records ADD COLUMN parent_sleep_hours REAL;');
+    }
+    if (!sleepColumns.some((column) => column.name === 'child_sleep_hours')) {
+      await db.execAsync('ALTER TABLE sleep_records ADD COLUMN child_sleep_hours REAL;');
+    }
   }
 
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
@@ -169,63 +176,28 @@ export async function createLocalAccount(db: SQLiteDatabase, input: CreateAccoun
   const passwordHash = await hashLocalPassword(input.password, salt);
 
   await db.withTransactionAsync(async () => {
+    await db.runAsync('INSERT INTO accounts (id, username, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)', accountId, username, salt, passwordHash, now);
+    await db.runAsync('INSERT INTO families (id, account_id, created_at) VALUES (?, ?, ?)', familyId, accountId, now);
+    await db.runAsync('INSERT INTO family_members (id, family_id, role, display_name, age_years, created_at) VALUES (?, ?, ?, ?, ?, ?)', parentId, familyId, 'parent', input.parentName.trim(), input.parentAge, now);
+    await db.runAsync('INSERT INTO family_members (id, family_id, role, display_name, age_years, created_at) VALUES (?, ?, ?, ?, ?, ?)', childId, familyId, 'child', input.childName.trim(), input.childAge, now);
     await db.runAsync(
-      'INSERT INTO accounts (id, username, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)',
-      accountId,
-      username,
-      salt,
-      passwordHash,
-      now
-    );
-    await db.runAsync(
-      'INSERT INTO families (id, account_id, created_at) VALUES (?, ?, ?)',
-      familyId,
-      accountId,
-      now
-    );
-    await db.runAsync(
-      'INSERT INTO family_members (id, family_id, role, display_name, created_at) VALUES (?, ?, ?, ?, ?)',
-      parentId,
-      familyId,
-      'parent',
-      input.parentName.trim(),
-      now
-    );
-    await db.runAsync(
-      'INSERT INTO family_members (id, family_id, role, display_name, created_at) VALUES (?, ?, ?, ?, ?)',
-      childId,
-      familyId,
-      'child',
-      input.childName.trim(),
-      now
-    );
-    await db.runAsync(
-      `INSERT INTO greenhouses
-        (id, child_member_id, current_plant_type, growth_percent, sunlight, water, created_at, updated_at)
+      `INSERT INTO greenhouses (id, child_member_id, current_plant_type, growth_percent, sunlight, water, created_at, updated_at)
        VALUES (?, ?, ?, 0, 0, 0, ?, ?)`,
-      greenhouseId,
-      childId,
-      initialGreenhouse.currentPlantType,
-      now,
-      now
+      greenhouseId, childId, initialGreenhouse.currentPlantType, now, now
     );
     await setSetting(db, SESSION_KEY, accountId);
   });
-
   return accountId;
 }
 
 export async function authenticateLocalAccount(db: SQLiteDatabase, username: string, password: string) {
-  const normalized = normalizeUsername(username);
   const row = await db.getFirstAsync<AccountCredentialRow>(
     'SELECT id, username, password_salt, password_hash FROM accounts WHERE username = ? COLLATE NOCASE',
-    normalized
+    normalizeUsername(username)
   );
   if (!row) return null;
-
   const candidateHash = await hashLocalPassword(password, row.password_salt);
   if (candidateHash !== row.password_hash) return null;
-
   await setSetting(db, SESSION_KEY, row.id);
   return row.id;
 }
@@ -241,36 +213,25 @@ export async function getActiveAccountId(db: SQLiteDatabase) {
 
 export async function loadSetupAndGreenhouse(db: SQLiteDatabase, accountId: string) {
   const row = await db.getFirstAsync<SetupRow>(
-    `SELECT
-      a.id AS account_id,
-      a.username AS username,
-      f.id AS family_id,
-      p.id AS parent_id,
-      p.display_name AS parent_name,
-      c.id AS child_id,
-      c.display_name AS child_name,
-      g.id AS greenhouse_id,
-      g.current_plant_type AS current_plant_type,
-      g.growth_percent AS growth_percent,
-      g.sunlight AS sunlight,
-      g.water AS water
-    FROM accounts a
-    JOIN families f ON f.account_id = a.id
-    JOIN family_members p ON p.family_id = f.id AND p.role = 'parent'
-    JOIN family_members c ON c.family_id = f.id AND c.role = 'child'
-    JOIN greenhouses g ON g.child_member_id = c.id
-    WHERE a.id = ?
-    LIMIT 1`,
+    `SELECT a.id AS account_id, a.username AS username, f.id AS family_id,
+      p.id AS parent_id, p.display_name AS parent_name, p.age_years AS parent_age,
+      c.id AS child_id, c.display_name AS child_name, c.age_years AS child_age,
+      g.id AS greenhouse_id, g.current_plant_type AS current_plant_type,
+      g.growth_percent AS growth_percent, g.sunlight AS sunlight, g.water AS water
+     FROM accounts a
+     JOIN families f ON f.account_id = a.id
+     JOIN family_members p ON p.family_id = f.id AND p.role = 'parent'
+     JOIN family_members c ON c.family_id = f.id AND c.role = 'child'
+     JOIN greenhouses g ON g.child_member_id = c.id
+     WHERE a.id = ? LIMIT 1`,
     accountId
   );
-
   if (!row) return null;
 
   const completedRows = await db.getAllAsync<CompletedPlantRow>(
     'SELECT id, plant_type, completed_at FROM completed_plants WHERE greenhouse_id = ? ORDER BY completed_at DESC',
     row.greenhouse_id
   );
-
   const setup: Setup = {
     accountId: row.account_id,
     familyId: row.family_id,
@@ -279,9 +240,10 @@ export async function loadSetupAndGreenhouse(db: SQLiteDatabase, accountId: stri
     greenhouseId: row.greenhouse_id,
     username: row.username,
     parentName: row.parent_name,
-    childName: row.child_name
+    parentAge: row.parent_age,
+    childName: row.child_name,
+    childAge: row.child_age
   };
-
   const greenhouse: GreenhouseState = {
     currentPlantType: row.current_plant_type,
     growthPercent: row.growth_percent,
@@ -289,21 +251,24 @@ export async function loadSetupAndGreenhouse(db: SQLiteDatabase, accountId: stri
     water: row.water,
     completedPlants: completedRows.map(mapCompletedPlant)
   };
-
   return { setup, greenhouse };
 }
 
 export async function loadSleepRecords(db: SQLiteDatabase, greenhouseId: string, limit = 20) {
   const rows = await db.getAllAsync<SleepRecordRow>(
-    `SELECT id, recorded_at, parent_score, child_score, sunlight, water, growth_increment
-     FROM sleep_records
-     WHERE greenhouse_id = ?
-     ORDER BY recorded_at DESC
-     LIMIT ?`,
+    `SELECT id, recorded_at, parent_sleep_hours, child_sleep_hours, parent_score, child_score, sunlight, water, growth_increment
+     FROM sleep_records WHERE greenhouse_id = ? ORDER BY recorded_at DESC LIMIT ?`,
     greenhouseId,
     limit
   );
   return rows.map(mapSleepRecord);
+}
+
+export async function updateProfileAges(db: SQLiteDatabase, setup: Setup, parentAge: number, childAge: number) {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE family_members SET age_years = ? WHERE id = ?', parentAge, setup.parentId);
+    await db.runAsync('UPDATE family_members SET age_years = ? WHERE id = ?', childAge, setup.childId);
+  });
 }
 
 export async function persistDailyProgress(
@@ -315,6 +280,8 @@ export async function persistDailyProgress(
     sunlight: number;
     water: number;
     growthIncrement: number;
+    parentSleepHours: number;
+    childSleepHours: number;
     parentScore: number;
     childScore: number;
     completedPlant?: CompletedPlant;
@@ -322,57 +289,35 @@ export async function persistDailyProgress(
 ) {
   const recordedAt = new Date().toISOString();
   const sleepRecordId = Crypto.randomUUID();
-
   await db.withTransactionAsync(async () => {
     await db.runAsync(
-      `UPDATE greenhouses
-       SET current_plant_type = ?, growth_percent = ?, sunlight = ?, water = ?, updated_at = ?
-       WHERE id = ?`,
-      params.nextPlantType,
-      params.nextGrowthPercent,
-      params.sunlight,
-      params.water,
-      recordedAt,
-      params.setup.greenhouseId
+      `UPDATE greenhouses SET current_plant_type = ?, growth_percent = ?, sunlight = ?, water = ?, updated_at = ? WHERE id = ?`,
+      params.nextPlantType, params.nextGrowthPercent, params.sunlight, params.water, recordedAt, params.setup.greenhouseId
     );
-
     if (params.completedPlant) {
-      await db.runAsync(
-        'INSERT INTO completed_plants (id, greenhouse_id, plant_type, completed_at) VALUES (?, ?, ?, ?)',
-        params.completedPlant.id,
-        params.setup.greenhouseId,
-        params.completedPlant.plantType,
-        params.completedPlant.completedAt
-      );
+      await db.runAsync('INSERT INTO completed_plants (id, greenhouse_id, plant_type, completed_at) VALUES (?, ?, ?, ?)', params.completedPlant.id, params.setup.greenhouseId, params.completedPlant.plantType, params.completedPlant.completedAt);
     }
-
     await db.runAsync(
       `INSERT INTO sleep_records
-        (id, parent_member_id, child_member_id, greenhouse_id, recorded_at, parent_score, child_score, sunlight, water, growth_increment)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      sleepRecordId,
-      params.setup.parentId,
-      params.setup.childId,
-      params.setup.greenhouseId,
-      recordedAt,
-      params.parentScore,
-      params.childScore,
-      params.sunlight,
-      params.water,
-      params.growthIncrement
+       (id, parent_member_id, child_member_id, greenhouse_id, recorded_at, parent_sleep_hours, child_sleep_hours, parent_score, child_score, sunlight, water, growth_increment)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sleepRecordId, params.setup.parentId, params.setup.childId, params.setup.greenhouseId, recordedAt,
+      params.parentSleepHours, params.childSleepHours, params.parentScore, params.childScore,
+      params.sunlight, params.water, params.growthIncrement
     );
   });
 
-  const record: SleepRecord = {
+  return {
     id: sleepRecordId,
     recordedAt,
+    parentSleepHours: params.parentSleepHours,
+    childSleepHours: params.childSleepHours,
     parentScore: params.parentScore,
     childScore: params.childScore,
     sunlight: params.sunlight,
     water: params.water,
     growthIncrement: params.growthIncrement
-  };
-  return record;
+  } satisfies SleepRecord;
 }
 
 export async function resetAllLocalData(db: SQLiteDatabase) {
@@ -398,17 +343,15 @@ async function setSetting(db: SQLiteDatabase, key: string, value: string) {
 }
 
 function mapCompletedPlant(row: CompletedPlantRow): CompletedPlant {
-  return {
-    id: row.id,
-    plantType: row.plant_type,
-    completedAt: row.completed_at
-  };
+  return { id: row.id, plantType: row.plant_type, completedAt: row.completed_at };
 }
 
 function mapSleepRecord(row: SleepRecordRow): SleepRecord {
   return {
     id: row.id,
     recordedAt: row.recorded_at,
+    parentSleepHours: row.parent_sleep_hours,
+    childSleepHours: row.child_sleep_hours,
     parentScore: row.parent_score,
     childScore: row.child_score,
     sunlight: row.sunlight,

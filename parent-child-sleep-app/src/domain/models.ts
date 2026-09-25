@@ -16,7 +16,9 @@ export type Setup = {
   greenhouseId: string;
   username: string;
   parentName: string;
+  parentAge: number | null;
   childName: string;
+  childAge: number | null;
 };
 
 export type FamilyMember = {
@@ -24,6 +26,7 @@ export type FamilyMember = {
   familyId: string;
   role: MemberRole;
   displayName: string;
+  ageYears: number | null;
 };
 
 export type CompletedPlant = {
@@ -40,6 +43,11 @@ export type GreenhouseState = {
   completedPlants: CompletedPlant[];
 };
 
+export type SleepHoursInput = {
+  parentHours: number;
+  childHours: number;
+};
+
 export type SleepGoalScore = {
   parentScore: number;
   childScore: number;
@@ -48,6 +56,8 @@ export type SleepGoalScore = {
 export type SleepRecord = {
   id: string;
   recordedAt: string;
+  parentSleepHours: number | null;
+  childSleepHours: number | null;
   parentScore: number;
   childScore: number;
   sunlight: number;
@@ -71,7 +81,9 @@ export type CreateAccountInput = {
   username: string;
   password: string;
   parentName: string;
+  parentAge: number;
   childName: string;
+  childAge: number;
   agreements: PolicyAgreements;
 };
 

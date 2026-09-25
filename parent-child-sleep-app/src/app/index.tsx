@@ -20,6 +20,11 @@ import { POLICY_COPY, POLICY_VERSIONS } from '../constants/policies';
 import { theme } from '../constants/theme';
 import type { PolicyAgreements } from '../domain/models';
 import { generatePrivateUsername, validatePassword, validatePrivateUsername } from '../services/authService';
+import {
+  formatProfileAge,
+  isValidChildAge,
+  isValidParentAge
+} from '../services/sleepRecommendationService';
 import { useApp } from '../store/AppContext';
 
 type PolicyStep = 'terms' | 'privacy' | 'healthData' | 'research' | null;
@@ -29,6 +34,12 @@ type AcceptedTimes = {
   privacy?: string;
   healthData?: string;
 };
+
+function parseAge(value: string) {
+  if (!/^\d+$/.test(value.trim())) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) ? parsed : null;
+}
 
 export default function HomeScreen() {
   const {
@@ -40,6 +51,7 @@ export default function HomeScreen() {
     createAccount,
     signIn,
     signOut,
+    saveProfileAges,
     deleteAccountData
   } = useApp();
 
@@ -47,7 +59,9 @@ export default function HomeScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [parentName, setParentName] = useState('');
+  const [parentAge, setParentAge] = useState('');
   const [childName, setChildName] = useState('');
+  const [childAge, setChildAge] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [policyStep, setPolicyStep] = useState<PolicyStep>(null);
@@ -127,12 +141,18 @@ export default function HomeScreen() {
       : 'Create a private username.';
     const passwordError = password ? validatePassword(password) : 'Create a password.';
     const passwordsMatch = password === confirmPassword;
+    const parsedParentAge = parseAge(parentAge);
+    const parsedChildAge = parseAge(childAge);
+    const parentAgeValid = parsedParentAge !== null && isValidParentAge(parsedParentAge);
+    const childAgeValid = parsedChildAge !== null && isValidChildAge(parsedChildAge);
     const canContinue =
       !usernameError &&
       !passwordError &&
       passwordsMatch &&
       parentName.trim().length > 0 &&
+      parentAgeValid &&
       childName.trim().length > 0 &&
+      childAgeValid &&
       !busy;
 
     const beginAgreements = () => {
@@ -157,7 +177,16 @@ export default function HomeScreen() {
 
       setPolicyStep(null);
       setBusy(true);
-      const result = await createAccount({ username, password, parentName, childName, agreements });
+      if (parsedParentAge === null || parsedChildAge === null) return;
+      const result = await createAccount({
+        username,
+        password,
+        parentName,
+        parentAge: parsedParentAge,
+        childName,
+        childAge: parsedChildAge,
+        agreements
+      });
       setBusy(false);
       if (!result.ok) setError(result.message ?? 'Could not create account.');
     };
@@ -247,6 +276,23 @@ export default function HomeScreen() {
             autoCapitalize="words"
           />
 
+          <Text style={styles.label}>Parent age</Text>
+          <TextInput
+            value={parentAge}
+            onChangeText={(value) => {
+              setParentAge(value.replace(/[^0-9]/g, '').slice(0, 2));
+              setError(null);
+            }}
+            placeholder="18-99+"
+            placeholderTextColor="#8A948E"
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+          {parentAge && !parentAgeValid ? (
+            <Text style={styles.inlineError}>Parent age must be 18-99. Enter 99 for age 99 or older.</Text>
+          ) : null}
+
           <Text style={styles.label}>Child display name</Text>
           <TextInput
             value={childName}
@@ -259,6 +305,23 @@ export default function HomeScreen() {
             style={styles.input}
             autoCapitalize="words"
           />
+
+          <Text style={styles.label}>Child age</Text>
+          <TextInput
+            value={childAge}
+            onChangeText={(value) => {
+              setChildAge(value.replace(/[^0-9]/g, '').slice(0, 2));
+              setError(null);
+            }}
+            placeholder="5-17"
+            placeholderTextColor="#8A948E"
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+          {childAge && !childAgeValid ? (
+            <Text style={styles.inlineError}>Child age must be between 5 and 17.</Text>
+          ) : null}
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -332,6 +395,76 @@ export default function HomeScreen() {
     );
   }
 
+  if (setup.parentAge === null || setup.childAge === null) {
+    const parsedParentAge = parseAge(parentAge);
+    const parsedChildAge = parseAge(childAge);
+    const parentAgeValid = parsedParentAge !== null && isValidParentAge(parsedParentAge);
+    const childAgeValid = parsedChildAge !== null && isValidChildAge(parsedChildAge);
+    const canSaveAges = parentAgeValid && childAgeValid && !busy;
+
+    return (
+      <AuthShell>
+        <Text style={styles.eyebrow}>SLEEP PROFILE</Text>
+        <Text style={styles.setupTitle}>Add ages for sleep goals.</Text>
+        <Text style={styles.setupBody}>
+          Sleep recommendations change with age. Add both ages so the app can calculate sleep progress automatically.
+        </Text>
+        <View style={styles.formCard}>
+          <Text style={styles.label}>{setup.parentName}'s age</Text>
+          <TextInput
+            value={parentAge}
+            onChangeText={(value) => {
+              setParentAge(value.replace(/[^0-9]/g, '').slice(0, 2));
+              setError(null);
+            }}
+            placeholder="18-99+"
+            placeholderTextColor="#8A948E"
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+          {parentAge && !parentAgeValid ? (
+            <Text style={styles.inlineError}>Parent age must be 18-99. Enter 99 for age 99 or older.</Text>
+          ) : null}
+
+          <Text style={styles.label}>{setup.childName}'s age</Text>
+          <TextInput
+            value={childAge}
+            onChangeText={(value) => {
+              setChildAge(value.replace(/[^0-9]/g, '').slice(0, 2));
+              setError(null);
+            }}
+            placeholder="5-17"
+            placeholderTextColor="#8A948E"
+            style={styles.input}
+            keyboardType="number-pad"
+            maxLength={2}
+          />
+          {childAge && !childAgeValid ? <Text style={styles.inlineError}>Child age must be between 5 and 17.</Text> : null}
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <Pressable
+            disabled={!canSaveAges}
+            onPress={async () => {
+              if (parsedParentAge === null || parsedChildAge === null) return;
+              setBusy(true);
+              const result = await saveProfileAges(parsedParentAge, parsedChildAge);
+              setBusy(false);
+              if (!result.ok) setError(result.message ?? 'Could not save ages.');
+            }}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              !canSaveAges && styles.disabledButton,
+              pressed && canSaveAges && styles.pressed
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>{busy ? 'Saving...' : 'Save Sleep Profile'}</Text>
+          </Pressable>
+        </View>
+      </AuthShell>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.homeContainer}>
@@ -362,7 +495,7 @@ export default function HomeScreen() {
         <View style={styles.messageCard}>
           <Text style={styles.messageTitle}>Grow together, one night at a time.</Text>
           <Text style={styles.messageText}>
-            Parent sleep progress creates sunlight, child sleep progress creates water, and both help the greenhouse grow.
+            Parent sleep progress creates sunlight, child sleep progress creates water, and both help the greenhouse grow. Sleep goals use the saved profile ages ({formatProfileAge(setup.parentAge, 'parent')} and {formatProfileAge(setup.childAge, 'child')}).
           </Text>
         </View>
 

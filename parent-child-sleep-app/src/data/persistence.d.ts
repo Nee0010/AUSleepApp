@@ -16,6 +16,7 @@ export function clearSession(): Promise<void>;
 export function getActiveAccountId(): Promise<string | null>;
 export function loadSetupAndGreenhouse(accountId: string): Promise<{ setup: Setup; greenhouse: GreenhouseState } | null>;
 export function loadSleepRecords(greenhouseId: string, limit?: number): Promise<SleepRecord[]>;
+export function updateProfileAges(setup: Setup, parentAge: number, childAge: number): Promise<void>;
 export function persistDailyProgress(params: {
   setup: Setup;
   nextPlantType: PlantType;
@@ -23,6 +24,8 @@ export function persistDailyProgress(params: {
   sunlight: number;
   water: number;
   growthIncrement: number;
+  parentSleepHours: number;
+  childSleepHours: number;
   parentScore: number;
   childScore: number;
   completedPlant?: CompletedPlant;

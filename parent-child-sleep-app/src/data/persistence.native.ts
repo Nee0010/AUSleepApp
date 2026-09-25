@@ -11,7 +11,7 @@ import type {
 import { createPasswordSalt, hashLocalPassword, normalizeUsername } from '../services/authService';
 
 export const DATABASE_NAME = 'sleep-greenhouse.db';
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 const SESSION_KEY = 'active_account_id';
 
 export const initialGreenhouse: GreenhouseState = {
@@ -28,8 +28,10 @@ type SetupRow = {
   family_id: string;
   parent_id: string;
   parent_name: string;
+  parent_age: number | null;
   child_id: string;
   child_name: string;
+  child_age: number | null;
   greenhouse_id: string;
   current_plant_type: PlantType;
   growth_percent: number;
@@ -53,6 +55,8 @@ type CompletedPlantRow = {
 type SleepRecordRow = {
   id: string;
   recorded_at: string;
+  parent_sleep_hours: number | null;
+  child_sleep_hours: number | null;
   parent_score: number;
   child_score: number;
   sunlight: number;
@@ -99,6 +103,7 @@ export async function initializePersistence() {
         family_id TEXT NOT NULL,
         role TEXT NOT NULL CHECK (role IN ('parent', 'child')),
         display_name TEXT NOT NULL,
+        age_years INTEGER,
         created_at TEXT NOT NULL,
         FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE
       );
@@ -129,6 +134,8 @@ export async function initializePersistence() {
         child_member_id TEXT NOT NULL,
         greenhouse_id TEXT NOT NULL,
         recorded_at TEXT NOT NULL,
+        parent_sleep_hours REAL,
+        child_sleep_hours REAL,
         parent_score REAL NOT NULL,
         child_score REAL NOT NULL,
         sunlight REAL NOT NULL,
@@ -183,6 +190,21 @@ export async function initializePersistence() {
     `);
   }
 
+  if (currentVersion < 3) {
+    const memberColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(family_members)');
+    if (!memberColumns.some((column) => column.name === 'age_years')) {
+      await db.execAsync('ALTER TABLE family_members ADD COLUMN age_years INTEGER;');
+    }
+
+    const sleepColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(sleep_records)');
+    if (!sleepColumns.some((column) => column.name === 'parent_sleep_hours')) {
+      await db.execAsync('ALTER TABLE sleep_records ADD COLUMN parent_sleep_hours REAL;');
+    }
+    if (!sleepColumns.some((column) => column.name === 'child_sleep_hours')) {
+      await db.execAsync('ALTER TABLE sleep_records ADD COLUMN child_sleep_hours REAL;');
+    }
+  }
+
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -215,19 +237,21 @@ export async function createLocalAccount(input: CreateAccountInput) {
     );
     await db.runAsync('INSERT INTO families (id, account_id, created_at) VALUES (?, ?, ?)', familyId, accountId, now);
     await db.runAsync(
-      'INSERT INTO family_members (id, family_id, role, display_name, created_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO family_members (id, family_id, role, display_name, age_years, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       parentId,
       familyId,
       'parent',
       input.parentName.trim(),
+      input.parentAge,
       now
     );
     await db.runAsync(
-      'INSERT INTO family_members (id, family_id, role, display_name, created_at) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO family_members (id, family_id, role, display_name, age_years, created_at) VALUES (?, ?, ?, ?, ?, ?)',
       childId,
       familyId,
       'child',
       input.childName.trim(),
+      input.childAge,
       now
     );
     await db.runAsync(
@@ -309,8 +333,10 @@ export async function loadSetupAndGreenhouse(accountId: string) {
       f.id AS family_id,
       p.id AS parent_id,
       p.display_name AS parent_name,
+      p.age_years AS parent_age,
       c.id AS child_id,
       c.display_name AS child_name,
+      c.age_years AS child_age,
       g.id AS greenhouse_id,
       g.current_plant_type AS current_plant_type,
       g.growth_percent AS growth_percent,
@@ -341,7 +367,9 @@ export async function loadSetupAndGreenhouse(accountId: string) {
     greenhouseId: row.greenhouse_id,
     username: row.username,
     parentName: row.parent_name,
-    childName: row.child_name
+    parentAge: row.parent_age,
+    childName: row.child_name,
+    childAge: row.child_age
   };
 
   const greenhouse: GreenhouseState = {
@@ -358,7 +386,7 @@ export async function loadSetupAndGreenhouse(accountId: string) {
 export async function loadSleepRecords(greenhouseId: string, limit = 20) {
   const db = await getDatabase();
   const rows = await db.getAllAsync<SleepRecordRow>(
-    `SELECT id, recorded_at, parent_score, child_score, sunlight, water, growth_increment
+    `SELECT id, recorded_at, parent_sleep_hours, child_sleep_hours, parent_score, child_score, sunlight, water, growth_increment
      FROM sleep_records
      WHERE greenhouse_id = ?
      ORDER BY recorded_at DESC
@@ -369,6 +397,14 @@ export async function loadSleepRecords(greenhouseId: string, limit = 20) {
   return rows.map(mapSleepRecord);
 }
 
+export async function updateProfileAges(setup: Setup, parentAge: number, childAge: number) {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE family_members SET age_years = ? WHERE id = ?', parentAge, setup.parentId);
+    await db.runAsync('UPDATE family_members SET age_years = ? WHERE id = ?', childAge, setup.childId);
+  });
+}
+
 export async function persistDailyProgress(params: {
   setup: Setup;
   nextPlantType: PlantType;
@@ -376,6 +412,8 @@ export async function persistDailyProgress(params: {
   sunlight: number;
   water: number;
   growthIncrement: number;
+  parentSleepHours: number;
+  childSleepHours: number;
   parentScore: number;
   childScore: number;
   completedPlant?: CompletedPlant;
@@ -409,13 +447,15 @@ export async function persistDailyProgress(params: {
 
     await db.runAsync(
       `INSERT INTO sleep_records
-        (id, parent_member_id, child_member_id, greenhouse_id, recorded_at, parent_score, child_score, sunlight, water, growth_increment)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, parent_member_id, child_member_id, greenhouse_id, recorded_at, parent_sleep_hours, child_sleep_hours, parent_score, child_score, sunlight, water, growth_increment)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       sleepRecordId,
       params.setup.parentId,
       params.setup.childId,
       params.setup.greenhouseId,
       recordedAt,
+      params.parentSleepHours,
+      params.childSleepHours,
       params.parentScore,
       params.childScore,
       params.sunlight,
@@ -427,6 +467,8 @@ export async function persistDailyProgress(params: {
   return {
     id: sleepRecordId,
     recordedAt,
+    parentSleepHours: params.parentSleepHours,
+    childSleepHours: params.childSleepHours,
     parentScore: params.parentScore,
     childScore: params.childScore,
     sunlight: params.sunlight,
@@ -467,6 +509,8 @@ function mapSleepRecord(row: SleepRecordRow): SleepRecord {
   return {
     id: row.id,
     recordedAt: row.recorded_at,
+    parentSleepHours: row.parent_sleep_hours,
+    childSleepHours: row.child_sleep_hours,
     parentScore: row.parent_score,
     childScore: row.child_score,
     sunlight: row.sunlight,

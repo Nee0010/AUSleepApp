@@ -62,7 +62,18 @@ function readState(): WebPersistedState {
         ...(parsed.greenhouse ?? {}),
         completedPlants: parsed.greenhouse?.completedPlants ?? []
       },
-      sleepRecords: parsed.sleepRecords ?? [],
+      setup: parsed.setup
+        ? {
+            ...parsed.setup,
+            parentAge: parsed.setup.parentAge ?? null,
+            childAge: parsed.setup.childAge ?? null
+          }
+        : null,
+      sleepRecords: (parsed.sleepRecords ?? []).map((record) => ({
+        ...record,
+        parentSleepHours: record.parentSleepHours ?? null,
+        childSleepHours: record.childSleepHours ?? null
+      })),
       agreements: parsed.agreements ?? null
     };
   } catch {
@@ -105,7 +116,9 @@ export async function createLocalAccount(input: CreateAccountInput) {
     greenhouseId,
     username,
     parentName: input.parentName.trim(),
-    childName: input.childName.trim()
+    parentAge: input.parentAge,
+    childName: input.childName.trim(),
+    childAge: input.childAge
   };
 
   writeState({
@@ -158,6 +171,13 @@ export async function loadSleepRecords(greenhouseId: string, limit = 20) {
   return state.sleepRecords.slice(0, limit);
 }
 
+export async function updateProfileAges(setup: Setup, parentAge: number, childAge: number) {
+  const state = readState();
+  if (!state.setup || state.setup.accountId !== setup.accountId) return;
+  state.setup = { ...state.setup, parentAge, childAge };
+  writeState(state);
+}
+
 export async function persistDailyProgress(params: {
   setup: Setup;
   nextPlantType: PlantType;
@@ -165,6 +185,8 @@ export async function persistDailyProgress(params: {
   sunlight: number;
   water: number;
   growthIncrement: number;
+  parentSleepHours: number;
+  childSleepHours: number;
   parentScore: number;
   childScore: number;
   completedPlant?: CompletedPlant;
@@ -174,6 +196,8 @@ export async function persistDailyProgress(params: {
   const record: SleepRecord = {
     id: Crypto.randomUUID(),
     recordedAt,
+    parentSleepHours: params.parentSleepHours,
+    childSleepHours: params.childSleepHours,
     parentScore: params.parentScore,
     childScore: params.childScore,
     sunlight: params.sunlight,

@@ -44,7 +44,7 @@ export default function GreenhouseScreen() {
           onPress={() => router.push('/sleep-entry')}
           style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
         >
-          <Text style={styles.primaryButtonText}>Add Today's Sleep Progress</Text>
+          <Text style={styles.primaryButtonText}>Add Today's Sleep</Text>
         </Pressable>
 
         <View style={styles.historySection}>
@@ -61,7 +61,9 @@ export default function GreenhouseScreen() {
                 <View key={record.id} style={styles.recordCard}>
                   <View>
                     <Text style={styles.recordDate}>{new Date(record.recordedAt).toLocaleString()}</Text>
-                    <Text style={styles.recordScores}>Parent {Math.round(record.parentScore)}% · Child {Math.round(record.childScore)}%</Text>
+                    <Text style={styles.recordScores}>
+                      Parent {record.parentSleepHours ?? '—'}h ({Math.round(record.parentScore)} pts) · Child {record.childSleepHours ?? '—'}h ({Math.round(record.childScore)} pts)
+                    </Text>
                   </View>
                   <Text style={styles.recordGrowth}>+{record.growthIncrement.toFixed(1)}%</Text>
                 </View>

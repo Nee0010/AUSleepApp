@@ -11,7 +11,8 @@ import {
   loadSetupAndGreenhouse,
   loadSleepRecords,
   persistDailyProgress,
-  resetAllLocalData
+  resetAllLocalData,
+  updateProfileAges
 } from '../data/persistence';
 import type {
   AuthResult,
@@ -20,10 +21,16 @@ import type {
   PlantType,
   Setup,
   SleepGoalScore,
+  SleepHoursInput,
   SleepRecord
 } from '../domain/models';
 import { validatePassword, validatePrivateUsername } from '../services/authService';
 import { calculateDailyGrowth } from '../services/growthService';
+import {
+  isValidChildAge,
+  isValidParentAge,
+  scoreSleepHours
+} from '../services/sleepRecommendationService';
 
 const plantRotation: PlantType[] = ['sunflower', 'tulip', 'daisy', 'lavender'];
 
@@ -37,7 +44,8 @@ type AppContextValue = {
   createAccount: (input: CreateAccountInput) => Promise<AuthResult>;
   signIn: (username: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
-  applySleepGoalScore: (score: SleepGoalScore) => Promise<void>;
+  saveProfileAges: (parentAge: number, childAge: number) => Promise<AuthResult>;
+  applySleepHours: (input: SleepHoursInput) => Promise<void>;
   deleteAccountData: () => Promise<void>;
 };
 
@@ -113,6 +121,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, message: 'Parent and child display names are required.' };
     }
 
+    if (!isValidParentAge(input.parentAge)) {
+      return { ok: false, message: 'Parent age must be between 18 and 99+.' };
+    }
+
+    if (!isValidChildAge(input.childAge)) {
+      return { ok: false, message: 'Child age must be between 5 and 17.' };
+    }
+
     if (
       !input.agreements.termsAcceptedAt ||
       !input.agreements.privacyAcceptedAt ||
@@ -155,8 +171,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSleepRecords([]);
   };
 
-  const applySleepGoalScore = async (score: SleepGoalScore) => {
-    if (!setup) return;
+  const saveProfileAges = async (parentAge: number, childAge: number): Promise<AuthResult> => {
+    if (!setup) return { ok: false, message: 'No profile is loaded.' };
+    if (!isValidParentAge(parentAge)) return { ok: false, message: 'Parent age must be between 18 and 99+.' };
+    if (!isValidChildAge(childAge)) return { ok: false, message: 'Child age must be between 5 and 17.' };
+
+    try {
+      await updateProfileAges(setup, parentAge, childAge);
+      setSetup((current) => current ? { ...current, parentAge, childAge } : current);
+      return { ok: true };
+    } catch (error) {
+      console.error('Save profile ages failed', error);
+      return { ok: false, message: 'Could not save profile ages.' };
+    }
+  };
+
+  const applySleepHours = async (input: SleepHoursInput) => {
+    if (!setup || setup.parentAge === null || setup.childAge === null) return;
+
+    const parentSleep = scoreSleepHours(setup.parentAge, input.parentHours, 'parent');
+    const childSleep = scoreSleepHours(setup.childAge, input.childHours, 'child');
+    const score: SleepGoalScore = {
+      parentScore: parentSleep.score,
+      childScore: childSleep.score
+    };
 
     const reward = calculateDailyGrowth(score);
     const nextGrowth = greenhouse.growthPercent + reward.growthIncrement;
@@ -182,6 +220,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       sunlight: reward.sunlight,
       water: reward.water,
       growthIncrement: reward.growthIncrement,
+      parentSleepHours: input.parentHours,
+      childSleepHours: input.childHours,
       parentScore: score.parentScore,
       childScore: score.childScore,
       completedPlant
@@ -217,7 +257,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       createAccount,
       signIn,
       signOut,
-      applySleepGoalScore,
+      saveProfileAges,
+      applySleepHours,
       deleteAccountData
     }),
     [isReady, hasAccount, isSignedIn, setup, greenhouse, sleepRecords]
