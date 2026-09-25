@@ -35,11 +35,9 @@ export function validatePrivateUsername(username: string, parentName?: string, c
 }
 
 export function validatePassword(password: string) {
-  if (password.length < 3 || password.length > 10) {
-    return 'Password must be 3 to 10 characters.';
-  }
-  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-    return 'Password must include at least one letter and one number.';
+  // TODO: Raise the minimum password length to at least 8 characters before production release.
+  if (password.length < 3) {
+    return 'Password must be at least 3 characters.';
   }
   return null;
 }
