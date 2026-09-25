@@ -234,7 +234,7 @@ export default function HomeScreen() {
               setPassword(value);
               setError(null);
             }}
-            placeholder="3 to 10 characters"
+            placeholder="At least 3 characters"
             placeholderTextColor="#8A948E"
             style={styles.input}
             secureTextEntry
