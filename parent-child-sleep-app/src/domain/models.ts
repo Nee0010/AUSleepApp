@@ -1,93 +1,68 @@
-export type MemberRole = 'parent' | 'child';
-
 export type PlantType = 'sunflower' | 'tulip' | 'daisy' | 'lavender';
-
-export type Account = {
-  id: string;
-  username: string;
-  createdAt: string;
-};
-
-export type Setup = {
-  accountId: string;
-  familyId: string;
-  parentId: string;
-  childId: string;
-  greenhouseId: string;
-  username: string;
-  parentName: string;
-  parentAge: number | null;
-  childName: string;
-  childAge: number | null;
-};
-
-export type FamilyMember = {
-  id: string;
-  familyId: string;
-  role: MemberRole;
-  displayName: string;
-  ageYears: number | null;
-};
-
-export type CompletedPlant = {
-  id: string;
-  plantType: PlantType;
-  completedAt: string;
-};
-
-export type GreenhouseState = {
+export type EntrySource = 'manual'; // Wearable sources reserved for Cycle 3.
+export type ConsentChoice = 'granted' | 'declined';
+export type CompletedPlant = { id: string; plantType: PlantType; completedAt: string };
+export type Greenhouse = {
   currentPlantType: PlantType;
   growthPercent: number;
   sunlight: number;
   water: number;
   completedPlants: CompletedPlant[];
 };
-
-export type SleepHoursInput = {
-  parentHours: number;
-  childHours: number;
-};
-
-export type SleepGoalScore = {
-  parentScore: number;
-  childScore: number;
-};
-
 export type SleepRecord = {
   id: string;
+  day: string; // Local YYYY-MM-DD, one record per child per day.
   recordedAt: string;
-  parentSleepHours: number | null;
-  childSleepHours: number | null;
+  parentHours: number;
+  childHours: number;
   parentScore: number;
   childScore: number;
   sunlight: number;
   water: number;
   growthIncrement: number;
+  source: EntrySource;
 };
-
-export type PolicyAgreements = {
+export type ChildProfile = {
+  id: string;
+  name: string;
+  age: number | null;
+  createdAt: string;
+  greenhouse: Greenhouse;
+  records: SleepRecord[];
+};
+export type ConsentState = {
   termsVersion: string;
   termsAcceptedAt: string;
   privacyVersion: string;
   privacyAcceptedAt: string;
-  healthDataVersion: string;
-  healthDataAcceptedAt: string;
+  healthVersion: string;
+  healthAcceptedAt: string;
   researchVersion: string;
-  researchStatus: 'granted' | 'declined';
+  researchChoice: ConsentChoice;
   researchRecordedAt: string;
 };
-
-export type CreateAccountInput = {
+export type FamilyData = {
+  schemaVersion: 2;
+  id: string;
   username: string;
-  password: string;
+  passwordSalt: string;
+  passwordHash: string;
   parentName: string;
-  parentAge: number;
-  childName: string;
-  childAge: number;
-  agreements: PolicyAgreements;
+  parentAge: number | null;
+  children: ChildProfile[];
+  parentSleepByDate: Record<string, number>;
+  consents: ConsentState;
+  sessionActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
-
-export type AuthResult = {
-  ok: boolean;
-  message?: string;
+export type CreateAccount = {
+  username: string; password: string;
+  parentName: string; parentAge: number;
+  childName: string; childAge: number;
+  researchChoice: ConsentChoice;
 };
+export type OpResult = { ok: boolean; message?: string };
+export const newGreenhouse = (): Greenhouse => ({
+  currentPlantType: 'sunflower', growthPercent: 0, sunlight: 0, water: 0, completedPlants: []
+});

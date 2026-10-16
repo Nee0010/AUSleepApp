@@ -1,6 +1,6 @@
 {
   "name": "parent-child-sleep-app",
-  "version": "0.3.0",
+  "version": "0.4.0-cycle2",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -8,7 +8,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-core.cjs"
   },
   "dependencies": {
     "expo": "~57.0.20",

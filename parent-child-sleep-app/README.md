@@ -1,81 +1,59 @@
-# Sleep Greenhouse
+# Sleep Greenhouse • Cycle 2
 
-Milestone 2 prototype for the Parent & Child Sleep App.
+Parent-only Expo / React Native app. Cycle 2 implementation for local testing and evaluation.
 
-## What works now
+## Run on Windows
 
-- Expo / React Native / TypeScript app for iOS and Android
-- Local account creation with a private username and password
-- Username privacy guidance and a generated anonymous-style username option
-- One parent and one child in the Version 1 UI
-- Persistent SQLite database on the device
-- Restored signed-in session after closing and reopening the app
-- Parent and child family records
-- Child greenhouse record
-- Saved development sleep entries
-- Persistent sunlight, water, and plant growth
-- Persistent completed-plant history
-- Sign out
-- Full local development-data reset
-- Research-consent table reserved for later university-approved consent work
+1. Install Node.js (recent LTS) if needed.
+2. Extract the ZIP and open `parent-child-sleep-app`.
+3. Double-click `START-APP.cmd`, or run:
+   ```bash
+   npm install
+   npx expo start -c
+   ```
+4. Use the QR code with the development environment supported by Expo SDK 57, or use an Android/iOS simulator. For the browser demo, use `START-WEB.cmd`.
 
-## Important security note
+`npm test` runs the rules and plant-growth checks. `npm run typecheck` checks TypeScript after installing dependencies.
 
-This is a development prototype, not a production authentication system.
+## Implemented in Cycle 2
 
-The prototype stores only a salted hash of the local password, not the password itself. The hash is intentionally a temporary local-auth mechanism so the account flow can be developed before the cloud backend exists. Production authentication should be moved to the approved backend identity provider and should use its managed password storage and authentication controls.
+- Create/sign in/sign out of a parent-operated **local** test account.
+- Add multiple children, edit each child, maintain a separate greenhouse, delete extra child profiles with confirmation.
+- Record parent and child sleep hours. One sleep entry per child per local day, with the parent's input shared across children.
+- Age-based sleep goals, 0–100 sunlight/water points, seven full days per plant, rotating plants and saved plant collections.
+- Show sleep history with 7-day, 30-day and all-time filters.
+- Parent and child profile settings, research-choice change, total local data reset.
+- Detailed, consistently formatted Terms of Service, Privacy Statement, Health Data Notice, and optional Research Participation and Parental Permission documents, dated October 16, 2026 (version 2.0).
+- On account creation, agree to the Terms and acknowledge the Privacy and Health Data notices. Research choice is optional and defaults to **No**.
+- Store all app data locally, and migrate older app data where available.
 
-A non-identifying username reduces direct-identification risk, but it does not by itself make the app HIPAA compliant. Parent and child display names are still direct identifiers in the local family profile. Future research data should use separate coded study identifiers and approved export rules.
+## Privacy and security limits
 
-## Run
+**Do not use this prototype for live university research or enter real participant health data.**
 
-From the project folder:
+- Auburn must approve privacy wording, parental permission and any IRB consent process. The in-app legal-style documents describe the current functionality but are not legal sign-off. The exact approval notice appears once on the Privacy and Consent page.
+- The app uses development-only local password verification (salted SHA-256 for compatibility with Cycle 1), **not** production-safe password storage. New signup requires 8+ characters; older passwords continue to work after migration.
+- Local SQLite data is not separately encrypted by this app. Web demo uses browser localStorage and is not appropriate for sensitive information.
+- Cloud sync, independent research export, production account management, wearable integration, and audit/access controls belong to Cycle 3.
+- No third-party analytics or cloud data uploads are implemented. No HIPAA compliance claim is made.
+- A parent-operated app may have different COPPA obligations than a child-operated service, but institutional review is still needed.
 
-```cmd
-npm install
-npx expo start
-```
+## Data migration
 
-For an existing copy of the Milestone 1 project, Expo can also install the new native packages directly:
+On native devices, this version uses the **same SQLite filename** (`sleep-greenhouse.db`) and imports pre-existing account, family, greenhouse, saved plant and sleep information into a new Cycle 2 snapshot table. The original tables are not deleted during migration. The migrated content is a snapshot: later Cycle 2 changes do not backport to the Cycle 1 tables. **Back up development data before switching versions.** Reset deletes both Cycle 2 and any remaining legacy account rows.
 
-```cmd
-npx expo install expo-sqlite expo-crypto
-```
+In the browser, a stored `sleep-greenhouse-web-v2` account is migrated into the new `sleep-greenhouse-cycle2-v1` key if present. Some previous saved data may have missing ages; set correct ages in Settings before recording new sleep entries.
 
-Then restart Metro with a clean cache:
+## Manual test walkthrough
 
-```cmd
-npx expo start -c
-```
+1. Sign up with a non-identifying username, set parent age 18–99 and child age 5–17. Review and accept required notices, decline or accept optional research separately.
+2. Add a second child on Home. Open both greenhouses and verify progress is separate.
+3. Record 8 hours parent/9 hours child for Child A. Then record Child B for the same day. Confirm the parent hours are prefilled and locked.
+4. Try a second entry for Child A on the same day. It should block the duplicate.
+5. Check each child's 7/30/all sleep history. Close and reopen to confirm persistence.
+6. Edit ages/names in Settings, change research choice, then sign out and back in.
+7. With disposable test data, delete the second child, then Delete All Local Data. Reopening should show a fresh Create Account screen.
 
-## Persistence test
+## Scope note
 
-1. Create an account and greenhouse.
-2. Add one sleep-progress entry.
-3. Confirm it appears under Saved sleep entries.
-4. Fully close Expo Go.
-5. Reopen Expo Go and the project.
-6. The same account, greenhouse progress, and sleep entry should still be present.
-7. Tap Sign Out to test local username/password login.
-8. Use Reset Data only when you intentionally want to delete all local development data.
-
-## Current database tables
-
-- `accounts`
-- `families`
-- `family_members`
-- `greenhouses`
-- `completed_plants`
-- `sleep_records`
-- `research_consents`
-- `app_settings`
-
-## Still intentionally TBD
-
-- Official sleep scoring formula
-- Apple Health / Health Connect integration
-- Cloud account authentication
-- Cloud synchronization
-- University research consent language and workflow
-- Research export fields
-- HIPAA and institutional compliance determination
+This is a Cycle 2 feature implementation for local evaluation, not a validated release for research participants. Real-device acceptance testing and university approvals are still necessary.

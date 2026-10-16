@@ -2,26 +2,15 @@
   "expo": {
     "name": "Sleep Greenhouse",
     "slug": "sleep-greenhouse",
-    "version": "0.1.0",
-    "orientation": "portrait",
     "scheme": "sleepgreenhouse",
+    "version": "0.4.0",
+    "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "plugins": [
-      "expo-router"
-    ],
-    "experiments": {
-      "typedRoutes": true
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "edu.auburn.sleepgreenhouse"
-    },
-    "android": {
-      "package": "edu.auburn.sleepgreenhouse"
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static"
-    }
+    "newArchEnabled": true,
+    "plugins": ["expo-router", "expo-sqlite"],
+    "experiments": { "typedRoutes": false },
+    "ios": { "supportsTablet": true },
+    "android": { "edgeToEdgeEnabled": true },
+    "web": { "bundler": "metro" }
   }
 }

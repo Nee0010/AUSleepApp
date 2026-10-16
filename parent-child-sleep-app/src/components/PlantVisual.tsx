@@ -1,61 +1,14 @@
-import { StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { View, Text } from 'react-native';
 import type { PlantType } from '../domain/models';
+import { ProgressBar } from './UI';
 import { theme } from '../constants/theme';
-
-const flowers: Record<PlantType, string> = {
-  sunflower: '🌻',
-  tulip: '🌷',
-  daisy: '🌼',
-  lavender: '🪻'
-};
-
-function growthEmoji(growthPercent: number, plantType: PlantType) {
-  if (growthPercent < 20) return '🫘';
-  if (growthPercent < 45) return '🌱';
-  if (growthPercent < 75) return '🌿';
-  return flowers[plantType];
+const FLOWERS:Record<PlantType,string> = {sunflower:'🌻',tulip:'🌷',daisy:'🌼',lavender:'🪻'};
+export function PlantVisual({plantType,progress}:{plantType:PlantType,progress:number}) {
+  const emoji= progress<20?'🫘':progress<45?'🌱':progress<75?'🌿':FLOWERS[plantType];
+  return <View style={{backgroundColor:'#EAF4E3',padding:24,borderRadius:20,alignItems:'center',gap:12}}>
+    <Text style={{fontSize:88}}>{emoji}</Text><Text style={{color:theme.colors.text,fontWeight:'800'}}>{plantType[0].toUpperCase()+plantType.slice(1)} · {Math.round(progress)}% grown</Text>
+    <View style={{width:'100%'}}><ProgressBar value={progress}/></View>
+  </View>;
 }
-
-export function PlantVisual({ plantType, growthPercent }: { plantType: PlantType; growthPercent: number }) {
-  return (
-    <View style={styles.scene}>
-      <Text style={styles.plant}>{growthEmoji(growthPercent, plantType)}</Text>
-      <View style={styles.soil} />
-      <Text style={styles.caption}>{Math.round(growthPercent)}% grown</Text>
-    </View>
-  );
-}
-
-export function CompletedPlantVisual({ plantType }: { plantType: PlantType }) {
-  return <Text style={styles.completedPlant}>{flowers[plantType]}</Text>;
-}
-
-const styles = StyleSheet.create({
-  scene: {
-    height: 240,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 20,
-    borderRadius: theme.radius.large,
-    backgroundColor: '#EAF4E3',
-    overflow: 'hidden'
-  },
-  plant: {
-    fontSize: 112,
-    marginBottom: -6
-  },
-  soil: {
-    width: '72%',
-    height: 20,
-    borderRadius: 999,
-    backgroundColor: '#9B7653'
-  },
-  caption: {
-    marginTop: 12,
-    color: theme.colors.textMuted,
-    fontWeight: '700'
-  },
-  completedPlant: {
-    fontSize: 42
-  }
-});
+export function CompletedFlower({type}:{type:PlantType}) { return <Text style={{fontSize:40}}>{FLOWERS[type]}</Text>; }
