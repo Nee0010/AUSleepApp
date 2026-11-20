@@ -8,7 +8,9 @@ function loadTS(relative) {
   const source=fs.readFileSync(path.join(project,relative),'utf8');
   const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
   const module={exports:{}};
-  new Function('require','module','exports',compiled)(require,module,module.exports);
+  const dir=path.dirname(relative);
+  const localRequire=id=>id.startsWith('.')?loadTS(path.join(dir,id)+(id.endsWith('.ts')?'':'.ts')):require(id);
+  new Function('require','module','exports',compiled)(localRequire,module,module.exports);
   return module.exports;
 }
 const {validAge,goalFor,scoreHours,validHours,localDay,isDuplicateDay}=loadTS('src/services/sleepRules.ts');
@@ -33,6 +35,34 @@ check('Sleep scores inside, below, and above ranges',()=>{
   assert.equal(scoreHours(25,8,'parent').score,100);
   assert.equal(validHours(-1),false);assert.equal(validHours(24.1),false);assert.equal(validHours(0),true);
   assert.throws(()=>scoreHours(14,25,'child'));
+});
+check('US 4.10: every valid age maps to exactly one guideline bracket',()=>{
+  const {SLEEP_GUIDELINES}=loadTS('src/constants/sleepGuidelines.ts');
+  for(const [who,lo,hi] of [['child',5,17],['parent',18,99]]) for(let age=lo;age<=hi;age++){
+    assert.equal(SLEEP_GUIDELINES.filter(g=>g.who===who&&age>=g.minAge&&age<=g.maxAge).length,1,`${who} ${age}`);
+  }
+});
+check('US 4.10: child targets match AASM pediatric recommendations',()=>{
+  const expect={5:[10,13],6:[9,12],12:[9,12],13:[8,10],17:[8,10]};
+  for(const [age,[min,max]] of Object.entries(expect)){const g=goalFor(Number(age),'child');assert.equal(g.min,min);assert.equal(g.max,max);assert.equal(g.source,'AASM (2016)');assert.equal(g.approved,true);}
+  assert.equal(goalFor(5,'child').includesNaps,true);
+  assert.equal(goalFor(8,'child').includesNaps,false);
+});
+check('US 4.10: adult targets are flagged pending sponsor review',()=>{
+  for(const age of [18,60,61,64,65,99]) assert.equal(goalFor(age,'parent').approved,false);
+  assert.equal(goalFor(30,'parent').label,'7+ hours');
+});
+check('US 4.10: same hours score differently by age',()=>{
+  assert.equal(scoreHours(16,9.5,'child').score,100);  // 13–17: 8–10 h
+  assert.equal(scoreHours(5,9.5,'child').score,95);    // age 5: 10–13 h
+  assert.equal(scoreHours(70,8.5,'parent').score,94);  // 65+: 7–8 h
+  assert.equal(scoreHours(40,8.5,'parent').score,100); // 18–60: 7+ h
+});
+check('US 4.10: target snapshot is stored with each sleep record',()=>{
+  const {goalSnapshot}=loadTS('src/services/sleepRules.ts');
+  assert.deepEqual(goalSnapshot(10,'child'),{age:10,guidelineId:'child-6-12',minHours:9,maxHours:12,label:'9–12 hours'});
+  const store=fs.readFileSync(path.join(project,'src/store/AppContext.tsx'),'utf8');
+  assert.match(store,/parentTarget:goalSnapshot\(/);assert.match(store,/childTarget:goalSnapshot\(/);
 });
 check('Duplicate daily entries are detected per child',()=>{
   assert.equal(isDuplicateDay([{day:'2026-10-16'}],'2026-10-16'),true);
