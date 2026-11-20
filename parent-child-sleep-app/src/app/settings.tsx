@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Alert, Platform, Text, View } from 'react-native';
 import { useApp } from '../store/AppContext';
 import type { ChildProfile } from '../domain/models';
 import { Page, Heading, Card, Button, Field, Note, SectionTitle } from '../components/UI';
 import { theme } from '../constants/theme';
+import { SleepGuidelinesCard, targetLine } from '../components/SleepGuidelines';
+const previewAge=(text:string)=>text.trim()===''?null:Number(text);
 
 function confirmDestructive(title:string,message:string,action:()=>void) {
   if (Platform.OS === 'web') {if(typeof window !== 'undefined' && window.confirm(message)) action();}
@@ -20,6 +22,7 @@ function ChildSettings({child,total}:{child:ChildProfile,total:number}) {
   return <Card><SectionTitle>{child.name}'s profile</SectionTitle>
     <Field label="Child name" value={name} onChangeText={setName}/>
     <Field label="Child age (5–17)" value={age} onChangeText={setAge} keyboardType="number-pad"/>
+    <Note>Sleep target — {targetLine({name:name||child.name,age:previewAge(age),who:'child'})}</Note>
     {message?<Note error={!message.endsWith('saved.')}>{message}</Note>:null}
     <Button title="Save Child Profile" onPress={save}/>
     {total>1?<Button title="Delete Child and Their Records" danger onPress={remove}/>:<Note>You cannot delete the last child from this page. Use Delete All Local Data below to delete the entire account.</Note>}
@@ -29,6 +32,9 @@ export default function Settings() {
   const {family,updateParent,signOut,setResearchChoice,deleteAll}=useApp();
   const [parentName,setParentName]=useState(family?.parentName??''),[parentAge,setParentAge]=useState(family?.parentAge===null?'':String(family?.parentAge??''));
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+  // On a web refresh the page can render before local data loads; fill the form once it arrives.
+  const loadedId=family?.id;
+  useEffect(()=>{if(family){setParentName(family.parentName);setParentAge(family.parentAge===null?'':String(family.parentAge));}},[loadedId]); // eslint-disable-line react-hooks/exhaustive-deps
   if(!family?.sessionActive) return <Page><Heading title="Sign in to view settings"/><Button title="Home" onPress={()=>router.replace('/')}/></Page>;
   async function saveParent() {setBusy(true);const r=await updateParent(parentName,Number(parentAge));setBusy(false);setMessage(r.ok?'Parent profile saved.':r.message??'Could not save.');}
   async function choice(value:'granted'|'declined') {setBusy(true);const r=await setResearchChoice(value);setBusy(false);setMessage(r.ok?'Research preference saved on this device.':r.message??'Could not save.');}
@@ -41,9 +47,11 @@ export default function Settings() {
     <Card><SectionTitle>Parent profile</SectionTitle>
       <Field label="Parent name" value={parentName} onChangeText={setParentName}/>
       <Field label="Parent age (18–99+)" value={parentAge} onChangeText={setParentAge} keyboardType="number-pad"/>
+      <Note>Sleep target — {targetLine({name:parentName||family.parentName,age:previewAge(parentAge),who:'parent'})}</Note>
       <Button title="Save Parent Profile" disabled={busy} onPress={saveParent}/></Card>
     <SectionTitle>Child profiles</SectionTitle>
     {family.children.map(ch=><ChildSettings key={ch.id} child={ch} total={family.children.length}/>)}
+    <SleepGuidelinesCard members={[{name:family.parentName,age:family.parentAge,who:'parent'},...family.children.map(ch=>({name:ch.name,age:ch.age,who:'child' as const}))]}/>
     <Card><SectionTitle>Research participation</SectionTitle><Note>Optional. Your choice is saved on this device only. No research upload is active.</Note>
       <Text style={{color:theme.colors.text}}>Current choice: <Text style={{fontWeight:'800'}}>{family.consents.researchChoice==='granted'?'Yes':'No'}</Text></Text>
       <Button title="Record Interest in Research" disabled={busy} subtle={family.consents.researchChoice==='granted'} onPress={()=>choice('granted')}/>
