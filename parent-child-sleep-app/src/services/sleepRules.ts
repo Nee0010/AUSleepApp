@@ -1,20 +1,35 @@
-export type SleepGoal = { min: number; max: number | null; label: string };
-export function validAge(age: number, who: 'parent' | 'child') {
+import { SLEEP_GUIDELINES, SLEEP_GUIDELINE_SOURCES, SLEEP_GUIDELINE_VERSION, hoursLabel, type Participant, type SleepGuideline } from '../constants/sleepGuidelines';
+export type SleepGoal = {
+  min: number; max: number | null; label: string;
+  guidelineId: string; ageLabel: string; includesNaps: boolean;
+  source: string; approved: boolean; version: string;
+};
+export function validAge(age: number, who: Participant) {
   return Number.isInteger(age) && (who === 'parent' ? age >= 18 && age <= 99 : age >= 5 && age <= 17);
 }
-export function goalFor(age: number, who: 'parent' | 'child'): SleepGoal {
+/** US 4.10: select the guideline bracket that matches the participant's age. */
+export function guidelineFor(age: number, who: Participant): SleepGuideline {
   if (!validAge(age, who)) throw new Error(`Invalid ${who} age.`);
-  if (who === 'child') {
-    if (age === 5) return { min: 10, max: 13, label: '10–13 hours' };
-    if (age <= 12) return { min: 9, max: 12, label: '9–12 hours' };
-    return { min: 8, max: 10, label: '8–10 hours' };
-  }
-  if (age <= 60) return { min: 7, max: null, label: '7+ hours' };
-  if (age <= 64) return { min: 7, max: 9, label: '7–9 hours' };
-  return { min: 7, max: 8, label: '7–8 hours' };
+  const match = SLEEP_GUIDELINES.find(g => g.who === who && age >= g.minAge && age <= g.maxAge);
+  if (!match) throw new Error(`No sleep guideline configured for ${who} age ${age}.`);
+  return match;
+}
+export function goalFor(age: number, who: Participant): SleepGoal {
+  const g = guidelineFor(age, who);
+  return {
+    min: g.minHours, max: g.maxHours, label: hoursLabel(g.minHours, g.maxHours),
+    guidelineId: g.id, ageLabel: g.ageLabel, includesNaps: g.includesNaps,
+    source: SLEEP_GUIDELINE_SOURCES[g.sourceId].short, approved: g.status === 'approved',
+    version: SLEEP_GUIDELINE_VERSION,
+  };
+}
+/** Compact snapshot stored on each sleep record so history keeps the target that was used. */
+export function goalSnapshot(age: number, who: Participant) {
+  const g = goalFor(age, who);
+  return { age, guidelineId: g.guidelineId, minHours: g.min, maxHours: g.max, label: g.label };
 }
 export function validHours(hours: number) { return Number.isFinite(hours) && hours >= 0 && hours <= 24; }
-export function scoreHours(age: number, hours: number, who: 'parent' | 'child') {
+export function scoreHours(age: number, hours: number, who: Participant) {
   if (!validHours(hours)) throw new Error('Hours must be between 0 and 24.');
   const goal = goalFor(age, who);
   const good = hours >= goal.min && (goal.max === null || hours <= goal.max);
