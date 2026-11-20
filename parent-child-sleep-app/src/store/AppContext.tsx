@@ -4,7 +4,8 @@ import type { ChildProfile, ConsentChoice, CreateAccount, FamilyData, OpResult }
 import { newGreenhouse } from '../domain/models';
 import { normalizeUsername, newSalt, passwordHash, randomId, validatePassword, validateUsername } from '../services/auth';
 import { addProgress } from '../services/growth';
-import { isDuplicateDay, localDay, scoreHours, validAge, validHours } from '../services/sleepRules';
+import { goalSnapshot, isDuplicateDay, localDay, scoreHours, validAge, validHours } from '../services/sleepRules';
+import { SLEEP_GUIDELINE_VERSION } from '../constants/sleepGuidelines';
 import { POLICY_VERSIONS } from '../constants/policies';
 
 type Store = {
@@ -134,7 +135,10 @@ export function AppProvider({children}:{children:React.ReactNode}) {
     const record = {
       id:randomId(), day, recordedAt:now, parentHours, childHours,
       parentScore, childScore, sunlight:parentScore,water:childScore,
-      growthIncrement:Math.min(parentScore,childScore)/7,source:'manual' as const
+      growthIncrement:Math.min(parentScore,childScore)/7,source:'manual' as const,
+      guidelineVersion:SLEEP_GUIDELINE_VERSION,
+      parentTarget:goalSnapshot(current.parentAge!,'parent'),
+      childTarget:goalSnapshot(child.age!,'child')
     };
     return commit(c => c ? {
       ...c,parentSleepByDate:{...c.parentSleepByDate,[day]:parentHours},
