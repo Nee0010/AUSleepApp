@@ -21,6 +21,13 @@ export type SleepRecord = {
   water: number;
   growthIncrement: number;
   source: EntrySource;
+  // US 4.10: age-based target used to score this entry. Optional for records saved before Cycle 2.1.
+  guidelineVersion?: string;
+  parentTarget?: SleepTargetSnapshot;
+  childTarget?: SleepTargetSnapshot;
+};
+export type SleepTargetSnapshot = {
+  age: number; guidelineId: string; minHours: number; maxHours: number | null; label: string;
 };
 export type ChildProfile = {
   id: string;
